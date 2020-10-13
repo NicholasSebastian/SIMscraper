@@ -1,7 +1,7 @@
 import puppeteer from 'puppeteer-extra';
 import stealth from 'puppeteer-extra-plugin-stealth';
 import randomUA from 'modern-random-ua';
-import { StudentData, Subject, Section } from './types';
+import { StudentData, PersonInfo, Subject, Section, Class } from './types';
 
 puppeteer.use(stealth());
 
@@ -40,6 +40,17 @@ const access = async (username: string, password: string, log: Function) => {
         page.click("body > table:nth-child(2) > tbody > tr:nth-child(1) > td > div > div > table.eppbr_tab_bg.EPPBRLAYOUTTABLE > tbody > tr > td:nth-child(1) > table > tbody > tr > td:nth-child(7) > a")
     ]);
 
+    log('Getting data...');
+    const info: PersonInfo | null | undefined =
+        await page.evaluate(() => {
+            return {
+                email: (document.querySelector('#DERIVED_SSS_SCL_EMAIL_ADDR')!.innerHTML).replace(/<\/?[^>]+(>|$)/g, ""),
+                homeAddress: (document.querySelector('#DERIVED_SSS_SCL_SSS_LONGCHAR_2')!.innerHTML).replace(/<\/?[^>]+(>|$)/g, ""),
+                mailAddress: (document.querySelector('#DERIVED_SSS_SCL_SSS_LONGCHAR_1')!.innerHTML).replace(/<\/?[^>]+(>|$)/g, ""),
+                phone: (document.querySelector('#DERIVED_SSS_SCL_DESCR50')!.innerHTML).replace(/<\/?[^>]+(>|$)/g, "")
+            };
+        });
+
     log('Viewing timetable...');
     await page.select('#DERIVED_SSS_SCL_SSS_MORE_ACADEMICS', '1002');
     await Promise.all([
@@ -47,50 +58,57 @@ const access = async (username: string, password: string, log: Function) => {
         page.click('#DERIVED_SSS_SCL_SSS_GO_1')
     ]);
 
-    log('Extracting data...');
+    log('Loading...');
     const iframe = await page.$('#ptifrmtgtframe').then(element => element?.contentFrame());
-    await iframe?.waitForSelector("#ACE_STDNT_ENRL_SSV2\\$0", { timeout: 0 });
+    await iframe?.waitForSelector("#ACE_STDNT_ENRL_SSV2\\$0", { timeout: 0, visible: true });
     
-    const name = await iframe?.$eval('#DERIVED_SSTSNAV_PERSON_NAME', element => element.textContent);
-    const subjects: Subject[] | undefined = await iframe?.$eval("#ACE_STDNT_ENRL_SSV2\\$0 > tbody", element => {
-        let subjects: Subject[] = [];
-        for (let i = 1; i < element.childElementCount; i += 2) {    // for each subject
-            const subject = element.children[i];
-            const timetableBody = subject.children[1].children[0].children[0].children[0].children[1].children[0].children[0].children[0].children[2].children[1].children[0].children[0].children[0];
-            
-            const subjectName = subject.children[1].children[0].children[0].children[0].children[0].children[0].innerHTML;
-            let sections: Section[] = [];
-            for (let j = 1; j < timetableBody.childElementCount; j++) {     // for each row
-                const row = timetableBody.children[j];
+    log('Getting name...');
+    const name: string | null | undefined = 
+        await iframe?.$eval('#DERIVED_SSTSNAV_PERSON_NAME', element => element.textContent);
 
-                let k = -1;
-                if (row.children[1].hasChildNodes()) {
-                    sections.push({
-                        section: row.children[1].children[0].children[0].children[0].innerHTML,
-                        component: row.children[2].children[0].children[0].innerHTML,
-                        classes: []
-                    });
-                    k++;
+    log('Getting subject information...');
+    const subjects: Subject[] | null | undefined =
+        await iframe?.$eval("#ACE_STDNT_ENRL_SSV2\\$0 > tbody", element => {
+            let subjects: Subject[] = [];
+            for (let i = 1; i < element.childElementCount; i += 2) {    // for each subject
+                const subject = element.children[i];
+                const subjectName = subject.children[1].children[0].children[0].children[0].children[0].children[0].innerHTML;
+                const timetableBody = subject.children[1].children[0].children[0].children[0].children[1].children[0]
+                                        .children[0].children[0].children[2].children[1].children[0].children[0].children[0];
+                
+                let sections: Section[] = [];
+                for (let j = 1; j < timetableBody.childElementCount; j++) {     // for each row
+                    const row = timetableBody.children[j];
+
+                    if (row.children[1].children.length > 0) {
+                        const sectionInfo: Section = {
+                            section: row.children[1].children[0].children[0].children[0].innerHTML,
+                            component: row.children[2].children[0].children[0].innerHTML,
+                            classes: []
+                        };
+                        sections.push(sectionInfo);
+                    }
+                    const classInfo: Class = {
+                        date: row.children[6].children[0].children[0].innerHTML,
+                        daytime: row.children[3].children[0].children[0].innerHTML,
+                        room: row.children[4].children[0].children[0].innerHTML,
+                        instructor: row.children[5].children[0].children[0].innerHTML
+                    };
+                    sections[sections.length - 1].classes.push(classInfo);
                 }
-                sections[k].classes.push({
-                    date: row.children[6].children[0].children[0].innerHTML,
-                    daytime: row.children[3].children[0].children[0].innerHTML,
-                    room: row.children[4].children[0].children[0].innerHTML,
-                    instructor: row.children[5].children[0].children[0].innerHTML
+
+                subjects.push({ 
+                    name: subjectName, 
+                    sections 
                 });
             }
-            subjects.push({ 
-                name: subjectName, 
-                sections 
-            });
-        }
-        return subjects;
-    })
+            return subjects;
+        })
 
     log('Finishing up...');
     await browser.close();
 
-    const data: StudentData = { name, subjects };
+    const data: StudentData = { name, info, subjects };
     return data;
 };
 

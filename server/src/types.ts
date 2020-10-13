@@ -1,6 +1,14 @@
 export interface StudentData {
     name: string | null | undefined,
-    subjects: Subject[] | undefined
+    info: PersonInfo | null | undefined,
+    subjects: Subject[] | null | undefined
+}
+
+export interface PersonInfo {
+    email: string,
+    homeAddress: string,
+    mailAddress: string,
+    phone: string
 }
 
 export interface Subject {
