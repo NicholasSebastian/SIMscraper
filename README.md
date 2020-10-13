@@ -1,5 +1,11 @@
 # SIMscraper
-An alternative interface to the SIMconnect website.
+An alternative interface to the SIMconnect website.  
+Still a work in progress... The UI is still practically non-existent and more data is to be fetched and presented.  
+This is still more of a working prototype and proof of concept.  
+The to-do-list includes:  
+- UI
+- Viewing past class attendance
+- SIMconnect News
 <br/><br/>
 
 ## Technical Details
