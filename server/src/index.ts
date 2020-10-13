@@ -1,21 +1,22 @@
 import express from 'express';
+import bodyParser from 'body-parser';
+import cors from 'cors';
 import access from './data';
 
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-app.get('/', (req, res) => {
-    res.write("<h1>Please wait...</h1>");
+app.use(bodyParser.json());
+app.use(cors())
+
+app.post('/api/data', (req, res) => {
+    const { username, password } = req.body;
     try {
-        access('nshendra001', 'c7jcbEdROB', (log: string) => res.write(log + '<br/>'))
-        .then(data => {
-            res.write(`<pre>${JSON.stringify(data, null, "\t")}</pre>`);
-            res.end();
-        });
+        access(username, password)
+        .then(data => res.json(data));
     }
-    catch(e) {
-        res.write("<h2>An Error Occured...</h2>");
-        res.end();
+    catch(ex) {
+        res.status(401).json({ message: ex });
     }
 });
 

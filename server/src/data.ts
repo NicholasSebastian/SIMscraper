@@ -6,9 +6,10 @@ import { StudentData, PersonInfo, Subject, Section, Class } from './types';
 puppeteer.use(stealth());
 
 const URL = 'https://simconnect.simge.edu.sg/psp/paprd/EMPLOYEE/HRMS/s/WEBLIB_EOPPB.ISCRIPT1.FieldFormula.Iscript_SM_Redirect?cmd=login';
+const HOME_URL = 'https://simconnect.simge.edu.sg/psp/paprd/EMPLOYEE/EMPL/h/?tab=HOME_PAGE_OPTION2';
 const HTTP_HEADERS = { "Accept-Language": "en,en-US;q=0.9,ja;q=0.8" };
 
-const access = async (username: string, password: string, log: Function) => {
+const access = async (username: string, password: string) => {
     const browser = await puppeteer.launch({ 
         headless: false,
         args: ['--no-sandbox'],
@@ -22,28 +23,25 @@ const access = async (username: string, password: string, log: Function) => {
     const cookies = await page.cookies();
     await page.deleteCookie(...cookies);
 
-    log('Entering SIMconnect...');
     await page.goto(URL, { timeout: 0, waitUntil: 'load' });
 
-    log('Logging in...');
     await page.select('#User_Type', 'Student');
     await page.type('#userid', username);
     await page.type('#pwd', password);
     await Promise.all([
-        page.waitForNavigation({ timeout: 0, waitUntil: 'load' }),
+        page.waitForNavigation({ timeout: 0, waitUntil: 'networkidle0' }),
         page.click('#loginbutton')
     ]);
+    if (page.url() !== HOME_URL) throw new Error('Invalid login credentials');
 
-    log('Viewing apps...');
     await Promise.all([
         page.waitForNavigation({ timeout: 0, waitUntil: 'networkidle0' }),
         page.click("body > table:nth-child(2) > tbody > tr:nth-child(1) > td > div > div > table.eppbr_tab_bg.EPPBRLAYOUTTABLE > tbody > tr > td:nth-child(1) > table > tbody > tr > td:nth-child(7) > a")
     ]);
 
-    log('Getting data...');
     const info: PersonInfo | null | undefined =
         await page.evaluate(() => {
-            return {
+            return {    // TODO: remove '\n' in string.
                 email: (document.querySelector('#DERIVED_SSS_SCL_EMAIL_ADDR')!.innerHTML).replace(/<\/?[^>]+(>|$)/g, ""),
                 homeAddress: (document.querySelector('#DERIVED_SSS_SCL_SSS_LONGCHAR_2')!.innerHTML).replace(/<\/?[^>]+(>|$)/g, ""),
                 mailAddress: (document.querySelector('#DERIVED_SSS_SCL_SSS_LONGCHAR_1')!.innerHTML).replace(/<\/?[^>]+(>|$)/g, ""),
@@ -51,22 +49,18 @@ const access = async (username: string, password: string, log: Function) => {
             };
         });
 
-    log('Viewing timetable...');
     await page.select('#DERIVED_SSS_SCL_SSS_MORE_ACADEMICS', '1002');
     await Promise.all([
         page.waitForNavigation({ timeout: 0, waitUntil: 'networkidle0' }),
         page.click('#DERIVED_SSS_SCL_SSS_GO_1')
     ]);
 
-    log('Loading...');
     const iframe = await page.$('#ptifrmtgtframe').then(element => element?.contentFrame());
     await iframe?.waitForSelector("#ACE_STDNT_ENRL_SSV2\\$0", { timeout: 0, visible: true });
     
-    log('Getting name...');
     const name: string | null | undefined = 
         await iframe?.$eval('#DERIVED_SSTSNAV_PERSON_NAME', element => element.textContent);
 
-    log('Getting subject information...');
     const subjects: Subject[] | null | undefined =
         await iframe?.$eval("#ACE_STDNT_ENRL_SSV2\\$0 > tbody", element => {
             let subjects: Subject[] = [];
@@ -103,12 +97,10 @@ const access = async (username: string, password: string, log: Function) => {
                 });
             }
             return subjects;
-        })
+        });
 
-    log('Finishing up...');
+    const data: StudentData = { name, info, subjects }
     await browser.close();
-
-    const data: StudentData = { name, info, subjects };
     return data;
 };
 
